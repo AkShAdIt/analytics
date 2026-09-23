@@ -9,8 +9,8 @@ export async function updateSession(request: NextRequest) {
   });
 
   try {
-    const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-    const rawAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+    const rawUrl = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL)?.trim();
+    const rawAnonKey = (process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)?.trim();
 
     if (
       !rawUrl ||

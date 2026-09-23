@@ -4,44 +4,25 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Activity, LayoutDashboard, Terminal, LogOut, User as UserIcon } from 'lucide-react';
-import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
-
 export default function Navbar() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
-  const isConfigured = isSupabaseConfigured();
 
   useEffect(() => {
-    if (!isConfigured) return;
-
-    try {
-      const supabase = createClient();
-      supabase.auth
-        .getUser()
-        .then(({ data, error }) => {
-          if (!error && data?.user) {
-            setUser(data.user);
-          }
-        })
-        .catch(() => {});
-
-      const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-        setUser(session?.user ?? null);
-      });
-
-      return () => {
-        authListener?.subscription?.unsubscribe();
-      };
-    } catch (err) {
-      console.error('Navbar auth initialization error:', err);
-    }
-  }, [isConfigured]);
+    fetch('/api/auth/me')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.user) {
+          setUser(data.user);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSignOut = async () => {
-    if (isConfigured) {
-      const supabase = createClient();
-      await supabase.auth.signOut();
-    }
+    try {
+      await fetch('/api/auth/signout', { method: 'POST' });
+    } catch {}
     setUser(null);
     router.push('/login');
     router.refresh();

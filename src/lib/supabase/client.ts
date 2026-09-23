@@ -11,8 +11,8 @@ function isValidHttpUrl(string?: string | null): boolean {
 }
 
 export function isSupabaseConfigured(): boolean {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+  const url = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL)?.trim();
+  const anonKey = (process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)?.trim();
   return Boolean(
     url &&
     anonKey &&
@@ -24,9 +24,9 @@ export function isSupabaseConfigured(): boolean {
   );
 }
 
-export function createClient() {
-  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || '';
-  const rawAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() || '';
+export function createClient(customUrl?: string, customKey?: string) {
+  const rawUrl = (customUrl || process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL)?.trim() || '';
+  const rawAnonKey = (customKey || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)?.trim() || '';
 
   const validUrl = isValidHttpUrl(rawUrl) ? rawUrl : 'https://placeholder.supabase.co';
   const validKey = rawAnonKey || 'placeholder';

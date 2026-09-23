@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Website, AnalyticsSummary, Pageview } from '@/lib/types';
 import RegisterWebsiteModal from '@/components/RegisterWebsiteModal';
-import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/client';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer
 } from 'recharts';
@@ -34,7 +34,18 @@ export default function DashboardPage() {
   const [copied, setCopied] = useState(false);
   const [isDemo, setIsDemo] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const isConfigured = isSupabaseConfigured();
+  const [supabaseConfig, setSupabaseConfig] = useState<{ url: string; key: string } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/config')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.configured && data.supabaseUrl && data.supabaseAnonKey) {
+          setSupabaseConfig({ url: data.supabaseUrl, key: data.supabaseAnonKey });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Fetch websites list
   const loadWebsites = async () => {
@@ -83,12 +94,12 @@ export default function DashboardPage() {
 
   // Realtime Supabase Database Listener
   useEffect(() => {
-    if (!isConfigured || !selectedSite || selectedSite.id.startsWith('demo-') || selectedSite.id.startsWith('site-')) {
+    if (!supabaseConfig || !selectedSite || selectedSite.id.startsWith('demo-') || selectedSite.id.startsWith('site-')) {
       return;
     }
 
     try {
-      const supabase = createClient();
+      const supabase = createClient(supabaseConfig.url, supabaseConfig.key);
       const channel = supabase
         .channel(`realtime-views:${selectedSite.id}`)
         .on(
@@ -111,7 +122,7 @@ export default function DashboardPage() {
     } catch (err) {
       console.error('Realtime subscription error:', err);
     }
-  }, [isConfigured, selectedSite, loadAnalytics]);
+  }, [supabaseConfig, selectedSite, loadAnalytics]);
 
   const handleWebsiteCreated = (newSite: Website) => {
     setWebsites((prev) => [newSite, ...prev]);

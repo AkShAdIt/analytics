@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import { Lock, Mail, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
 
 export default function LoginPage() {
@@ -12,31 +11,42 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const isConfigured = isSupabaseConfigured();
+  const [configured, setConfigured] = useState<boolean>(true);
+
+  useEffect(() => {
+    fetch('/api/config')
+      .then((res) => res.json())
+      .then((data) => {
+        setConfigured(Boolean(data.configured));
+      })
+      .catch(() => {});
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
-    if (!isConfigured) {
+    if (!configured) {
       // In demo mode, bypass auth and navigate straight to dashboard
       router.push('/dashboard');
       return;
     }
 
     try {
-      const supabase = createClient();
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
       });
 
-      if (error) {
-        throw error;
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to sign in');
       }
 
       router.push('/dashboard');
+      router.refresh();
     } catch (err: any) {
       setError(err.message || 'Failed to sign in');
     } finally {
@@ -55,7 +65,7 @@ export default function LoginPage() {
           <p className="text-sm text-zinc-400 mt-1">Access your registered websites and visitor telemetry</p>
         </div>
 
-        {!isConfigured && (
+        {!configured && (
           <div className="mb-6 p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-200 text-xs space-y-2">
             <div className="flex items-center gap-1.5 font-semibold text-indigo-400">
               <Sparkles size={16} />
@@ -86,7 +96,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-10 pr-3.5 py-2.5 bg-zinc-800/80 border border-zinc-700/80 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-                required={isConfigured}
+                required={configured}
               />
             </div>
           </div>
@@ -103,7 +113,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-10 pr-3.5 py-2.5 bg-zinc-800/80 border border-zinc-700/80 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-                required={isConfigured}
+                required={configured}
               />
             </div>
           </div>
@@ -113,7 +123,7 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full mt-2 flex items-center justify-center gap-2 py-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-lg text-sm font-semibold transition shadow-lg shadow-indigo-600/25 disabled:opacity-50"
           >
-            {loading ? 'Authenticating...' : isConfigured ? 'Sign In' : 'Enter Dashboard (Demo Mode)'}
+            {loading ? 'Authenticating...' : configured ? 'Sign In' : 'Enter Dashboard (Demo Mode)'}
             <ArrowRight size={16} />
           </button>
         </form>
