@@ -1,4 +1,4 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 export async function updateSession(request: NextRequest) {
@@ -8,41 +8,55 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  try {
+    const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+    const rawAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
 
-  if (!url || !anonKey || url.includes('placeholder') || url.includes('your-project-id')) {
+    if (
+      !rawUrl ||
+      !rawAnonKey ||
+      rawUrl.includes('placeholder') ||
+      rawUrl.includes('your-project-id') ||
+      rawAnonKey === 'placeholder' ||
+      rawAnonKey === 'placeholder-anon-key'
+    ) {
+      return response;
+    }
+
+    // Ensure URL is a valid http/https URL before creating client
+    try {
+      const parsedUrl = new URL(rawUrl);
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        return response;
+      }
+    } catch {
+      return response;
+    }
+
+    const supabase = createServerClient(rawUrl, rawAnonKey, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet: { name: string; value: string; options?: any }[]) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          response = NextResponse.next({
+            request,
+          });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          );
+        },
+      },
+    });
+
+    // Refresh auth token if expired - silently handle any auth/network errors
+    await supabase.auth.getUser();
+
+    return response;
+  } catch (error) {
+    // Prevent unhandled errors from crashing Vercel middleware
+    console.error('Middleware session update error:', error);
     return response;
   }
-
-  const supabase = createServerClient(url, anonKey, {
-    cookies: {
-      get(name: string) {
-        return request.cookies.get(name)?.value;
-      },
-      set(name: string, value: string, options: CookieOptions) {
-        request.cookies.set({ name, value, ...options });
-        response = NextResponse.next({
-          request: {
-            headers: request.headers,
-          },
-        });
-        response.cookies.set({ name, value, ...options });
-      },
-      remove(name: string, options: CookieOptions) {
-        request.cookies.set({ name, value: '', ...options });
-        response = NextResponse.next({
-          request: {
-            headers: request.headers,
-          },
-        });
-        response.cookies.set({ name, value: '', ...options });
-      },
-    },
-  });
-
-  // Refresh auth token if expired
-  await supabase.auth.getUser();
-
-  return response;
 }
