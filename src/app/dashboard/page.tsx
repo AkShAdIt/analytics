@@ -1,15 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Website, AnalyticsSummary, Pageview } from '@/lib/types';
 import RegisterWebsiteModal from '@/components/RegisterWebsiteModal';
+import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer
 } from 'recharts';
 import {
   Users, Eye, Globe, Laptop, Smartphone, Tablet,
   Plus, Code, RefreshCw, ExternalLink, ShieldAlert,
-  ArrowUpRight, Clock, Compass, Layers, Monitor
+  ArrowUpRight, Clock, Compass, Layers, Monitor, Trash2, CheckCircle2, Radio
 } from 'lucide-react';
 
 // Country flag emoji helper
@@ -32,6 +33,8 @@ export default function DashboardPage() {
   const [isSnippetOpen, setIsSnippetOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isDemo, setIsDemo] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const isConfigured = isSupabaseConfigured();
 
   // Fetch websites list
   const loadWebsites = async () => {
@@ -41,9 +44,12 @@ export default function DashboardPage() {
       if (data.websites && data.websites.length > 0) {
         setWebsites(data.websites);
         setIsDemo(Boolean(data.isDemo));
-        if (!selectedSite) {
-          setSelectedSite(data.websites[0]);
-        }
+        setSelectedSite((current) => {
+          if (current && data.websites.some((w: Website) => w.id === current.id)) {
+            return current;
+          }
+          return data.websites[0];
+        });
       }
     } catch (err) {
       console.error('Failed to load websites', err);
@@ -51,7 +57,7 @@ export default function DashboardPage() {
   };
 
   // Fetch analytics for selected site & range
-  const loadAnalytics = async () => {
+  const loadAnalytics = useCallback(async () => {
     if (!selectedSite) return;
     setLoading(true);
     try {
@@ -63,7 +69,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedSite, timeRange]);
 
   useEffect(() => {
     loadWebsites();
@@ -73,11 +79,66 @@ export default function DashboardPage() {
     if (selectedSite) {
       loadAnalytics();
     }
-  }, [selectedSite, timeRange]);
+  }, [selectedSite, timeRange, loadAnalytics]);
+
+  // Realtime Supabase Database Listener
+  useEffect(() => {
+    if (!isConfigured || !selectedSite || selectedSite.id.startsWith('demo-') || selectedSite.id.startsWith('site-')) {
+      return;
+    }
+
+    try {
+      const supabase = createClient();
+      const channel = supabase
+        .channel(`realtime-views:${selectedSite.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'pageviews',
+            filter: `website_id=eq.${selectedSite.id}`,
+          },
+          () => {
+            loadAnalytics();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    } catch (err) {
+      console.error('Realtime subscription error:', err);
+    }
+  }, [isConfigured, selectedSite, loadAnalytics]);
 
   const handleWebsiteCreated = (newSite: Website) => {
     setWebsites((prev) => [newSite, ...prev]);
     setSelectedSite(newSite);
+  };
+
+  const handleDeleteWebsite = async () => {
+    if (!selectedSite) return;
+    if (!confirm(`Are you sure you want to delete ${selectedSite.name}? This will remove all associated pageview analytics.`)) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/websites?id=${selectedSite.id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        const remaining = websites.filter((w) => w.id !== selectedSite.id);
+        setWebsites(remaining);
+        setSelectedSite(remaining[0] || null);
+      }
+    } catch (err) {
+      console.error('Failed to delete website', err);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const currentSnippet = selectedSite
@@ -93,27 +154,38 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-      {/* Demo Mode Notice */}
-      {isDemo && (
-        <div className="mb-6 p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2.5 text-indigo-300">
-            <span className="flex h-2 w-2 rounded-full bg-indigo-400 animate-ping" />
-            <span>
-              <strong>Demo Preview Mode:</strong> Showing live simulation data. Configure <code>.env.local</code> with your Supabase credentials to save real visits.
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <a
-              href="https://supabase.com/dashboard"
-              target="_blank"
-              rel="noreferrer"
-              className="text-indigo-400 hover:text-indigo-200 underline font-medium"
-            >
-              Get Supabase Keys →
-            </a>
-          </div>
+      {/* Database Connection Status Banner */}
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs">
+        <div className="flex items-center gap-2.5">
+          {!isDemo ? (
+            <>
+              <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-zinc-200">
+                <strong>Database Connected:</strong> Supabase PostgreSQL with Realtime active
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="flex h-2.5 w-2.5 rounded-full bg-amber-500" />
+              <span className="text-zinc-300">
+                <strong>Demo Preview Mode:</strong> Connect your Supabase project in <code>.env.local</code> or Vercel environment variables to persist live visits.
+              </span>
+            </>
+          )}
         </div>
-      )}
+
+        <div className="flex items-center gap-3">
+          <a
+            href="https://supabase.com/dashboard"
+            target="_blank"
+            rel="noreferrer"
+            className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium"
+          >
+            <span>Supabase Dashboard</span>
+            <ExternalLink size={12} />
+          </a>
+        </div>
+      </div>
 
       {/* Top Header Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-zinc-800">
@@ -153,6 +225,18 @@ export default function DashboardPage() {
             >
               <Code size={15} />
               <span>Get Tracking Code</span>
+            </button>
+          )}
+
+          {/* Delete Site Button */}
+          {selectedSite && websites.length > 1 && (
+            <button
+              onClick={handleDeleteWebsite}
+              disabled={deleting}
+              className="p-2 text-zinc-500 hover:text-red-400 bg-zinc-900 border border-zinc-800 hover:border-red-500/30 rounded-xl transition"
+              title="Delete Website"
+            >
+              <Trash2 size={15} />
             </button>
           )}
         </div>

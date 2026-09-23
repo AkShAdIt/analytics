@@ -93,7 +93,6 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
-      // If user isn't logged in with Supabase auth, provide demo site
       return NextResponse.json({ website: mockSite, isDemo: true });
     }
 
@@ -137,6 +136,42 @@ export async function POST(req: NextRequest) {
         { status: 422 }
       );
     }
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ error: 'Missing website id' }, { status: 400 });
+    }
+
+    if (!isSupabaseConfigured() || id.startsWith('demo-') || id.startsWith('site-')) {
+      return NextResponse.json({ ok: true, isDemo: true });
+    }
+
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized. Please sign in.' }, { status: 401 });
+    }
+
+    const { error } = await supabase
+      .from('websites')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
