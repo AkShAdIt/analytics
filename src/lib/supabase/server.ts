@@ -1,12 +1,25 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
+function isValidHttpUrl(string?: string | null): boolean {
+  if (!string) return false;
+  try {
+    const url = new URL(string.trim());
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export function createClient() {
   const cookieStore = cookies();
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder';
+  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || '';
+  const rawAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() || '';
 
-  return createServerClient(url, anonKey, {
+  const validUrl = isValidHttpUrl(rawUrl) ? rawUrl : 'https://placeholder.supabase.co';
+  const validKey = rawAnonKey || 'placeholder';
+
+  return createServerClient(validUrl, validKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();

@@ -14,18 +14,27 @@ export default function Navbar() {
   useEffect(() => {
     if (!isConfigured) return;
 
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      setUser(data.user);
-    });
+    try {
+      const supabase = createClient();
+      supabase.auth
+        .getUser()
+        .then(({ data, error }) => {
+          if (!error && data?.user) {
+            setUser(data.user);
+          }
+        })
+        .catch(() => {});
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
+      const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+        setUser(session?.user ?? null);
+      });
 
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
+      return () => {
+        authListener?.subscription?.unsubscribe();
+      };
+    } catch (err) {
+      console.error('Navbar auth initialization error:', err);
+    }
   }, [isConfigured]);
 
   const handleSignOut = async () => {
